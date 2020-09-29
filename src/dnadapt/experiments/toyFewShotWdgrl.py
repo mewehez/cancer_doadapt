@@ -1,7 +1,8 @@
 import os
+import time
 
 from dnadapt.data.wdgrlLoader import load_data
-from dnadapt.globals import datadir
+from dnadapt.globals import datadir, logdir
 from dnadapt.models.toyModels import create_wdgrl_model, create_disc
 from dnadapt.training.fewShotWdgrl import train_model
 from dnadapt.utils.data import random_split_data
@@ -24,8 +25,8 @@ def main():
         'alpha2': 1e-3,
         'epochs': 40,
         'bsize': 32,
-        'patience': 7,
-        'min_epoch': 10
+        'patience': 1,
+        'min_epoch': 5
     }
 
     n_input = src_train[0].shape[1]
@@ -37,7 +38,11 @@ def main():
     # create discriminator
     disc = create_disc(n_hidden)
 
-    train_model(model, [src_train, trg_train, trg_fs], valid_data=[src_valid, trg_valid], disc=disc, **config)
+    watcher = train_model(model, [src_train, trg_train, trg_fs], valid_data=[src_valid, trg_valid], disc=disc, **config)
+    # save stats
+    date_time = time.strftime("%Y-%m-%d_%H-%M-%S")
+    watcher.name = f'toy_wdgrl_{date_time}'
+    watcher.save(logdir)
 
 
 if __name__ == '__main__':
