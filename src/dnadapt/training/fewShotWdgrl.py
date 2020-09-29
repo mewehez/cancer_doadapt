@@ -64,6 +64,7 @@ def _run_train_epoch(model, loader, lc_fnc, opt, wd_opt, steps=10, lambd=1, gamm
 def make_training(model, loader, clf_loss_fn, opt, wd_opt):
     def train(watcher=None, **kwargs):
         return _run_train_epoch(model, loader, clf_loss_fn, opt, wd_opt, watcher=watcher, **kwargs)
+
     return train
 
 
@@ -82,5 +83,5 @@ def train_model(model: WDGRLNet, train_data, valid_data=None, disc=None, epochs=
 
     # Prepare validation
     validation_fnc, validset = create_valid_fnc(model, lc_fnc, valid_data=valid_data, bsize=bsize)
-    train_wdgrl(model, trainset, training_fnc, validset=validset, valid_fnc=validation_fnc, disc=disc, epochs=epochs,
-                patience=patience, min_epoch=min_epoch, **kwargs)
+    return train_wdgrl(model, trainset, training_fnc, validset=validset, valid_fnc=validation_fnc, disc=disc,
+                       epochs=epochs, patience=patience, min_epoch=min_epoch, **kwargs)
