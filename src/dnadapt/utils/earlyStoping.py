@@ -58,9 +58,9 @@ class EarlyStopping:
         if self.verbose:
             print(f'Validation loss decreased ({self.val_loss_min:.6f} --> {val_loss:.6f}).')
 
+        # save model if path given
+        self.best_param = copy.deepcopy(model.state_dict())
         if self.path is not None:
-            # save model if path given
-            self.best_param = copy.deepcopy(model.state_dict())
             print('Saving model ...')
             torch.save(model.state_dict(), self.path)
         self.val_loss_min = val_loss

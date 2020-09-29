@@ -17,16 +17,16 @@ def main():
 
     # config values
     config = {
-        'lambda': 1,
+        'lambd': 1,
         'gamma': 10,
-        'lr_wd': 1e-3,
+        'alpha1': 1e-3,
         'steps': 10,
-
-        'l2_param': 1e-2,
-        'lr': 1e-3,
-        'epochs': 40
+        'alpha2': 1e-3,
+        'epochs': 40,
+        'bsize': 32,
+        'patience': 7,
+        'min_epoch': 10
     }
-    bsize = 32
 
     n_input = src_train[0].shape[1]
     n_class = 2
@@ -37,7 +37,7 @@ def main():
     # create discriminator
     disc = create_disc(n_hidden)
 
-    train_model(model, [src_train, trg_train, trg_fs], valid_data=[src_valid, trg_valid], disc=disc, bsize=bsize, **config)
+    train_model(model, [src_train, trg_train, trg_fs], valid_data=[src_valid, trg_valid], disc=disc, **config)
 
 
 if __name__ == '__main__':

@@ -17,13 +17,13 @@ class WDGRLNet(nn.Module):
     def classif(self, h):
         return self.c(h)
 
-    def critic_params(self):
+    def w_params(self):
         return list(self.w.parameters())
     
-    def classif_params(self):
+    def c_params(self):
         return list(self.c.parameters())
 
-    def gen_params(self):
+    def g_params(self):
         return list(self.g.parameters())
 
 
@@ -37,7 +37,7 @@ class MTWdgrlNet(WDGRLNet):
         h = self.gs(x) if src else self.gt(x)
         return self.g(h)
 
-    def gen_params(self):
+    def g_params(self):
         theta_gs = self.gs.parameters()
         theta_gt = self.gt.parameters()
         theta_g = self.g.parameters()

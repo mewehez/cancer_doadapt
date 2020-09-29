@@ -15,7 +15,7 @@ def _make_loader(data, bsize=32):
     y = torch.as_tensor(y, dtype=torch.long, device=device)
     x = torch.cat(data, dim=0)
     dataset = TensorDataset(x, y)
-    dataloader = DataLoader(dataset, batch_size=bsize)
+    dataloader = DataLoader(dataset, batch_size=bsize, shuffle=True)  # NOTE: Always shuffle
     return dataloader
 
 
@@ -51,6 +51,7 @@ def _run_epoch(model, loader, loss_fn, opt=None, train=True, watcher=None, **kwa
             'acc': '%.4f' % np.mean(watcher.data_run['acc'])
         }
         pbar(step=1, vals=stats)
+        del loss
     watcher.snap()
 
 

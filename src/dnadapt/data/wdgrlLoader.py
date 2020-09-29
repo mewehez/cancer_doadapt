@@ -43,8 +43,8 @@ def batch_generator(dataloader: DataLoader):
 
 
 def make_wdgrl_loader(dataset, bsize=32):
-    src_gen = batch_generator(DataLoader(dataset[0], batch_size=bsize, drop_last=True))
-    trg_gen = batch_generator(DataLoader(dataset[1], batch_size=bsize, drop_last=True))
+    src_gen = batch_generator(DataLoader(dataset[0], batch_size=bsize, shuffle=True, drop_last=True))
+    trg_gen = batch_generator(DataLoader(dataset[1], batch_size=bsize, shuffle=True, drop_last=True))
 
     # compute epoch size
     src_epoch_size = int(len(dataset[0].tensors[1])/bsize)

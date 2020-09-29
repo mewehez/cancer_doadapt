@@ -7,8 +7,8 @@ from dnadapt.globals import datadir
 
 
 def make_fs_wdgrl_loader(dataset, fs_dataset, bsize=32):
-    src_gen = batch_generator(DataLoader(dataset[0], batch_size=bsize, drop_last=True))
-    trg_gen = batch_generator(DataLoader(dataset[1], batch_size=bsize, drop_last=True))
+    src_gen = batch_generator(DataLoader(dataset[0], batch_size=bsize, shuffle=True, drop_last=True))
+    trg_gen = batch_generator(DataLoader(dataset[1], batch_size=bsize, shuffle=True, drop_last=True))
     fs_gen = batch_generator(DataLoader(fs_dataset, batch_size=bsize))
 
     # epoch size
