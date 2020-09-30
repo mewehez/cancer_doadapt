@@ -47,8 +47,8 @@ def make_wdgrl_loader(dataset, bsize=32):
     trg_gen = batch_generator(DataLoader(dataset[1], batch_size=bsize, shuffle=True, drop_last=True))
 
     # compute epoch size
-    src_epoch_size = int(len(dataset[0].tensors[1])/bsize)
-    trg_epoch_size = int(len(dataset[1].tensors[1])/bsize)
+    src_epoch_size = int(len(dataset[0])/bsize)
+    trg_epoch_size = int(len(dataset[1])/bsize)
     epoch_size = max(src_epoch_size, trg_epoch_size)
     dataloader = WDLoader(src_gen, trg_gen, size=epoch_size)
     return dataloader
@@ -56,10 +56,10 @@ def make_wdgrl_loader(dataset, bsize=32):
 
 @torch.no_grad()
 def get_gen_data(model, dataset):
-    xs, _ = dataset[0].tensors
-    xt, _ = dataset[1].tensors
+    xs, _ = dataset[0].tensors()
+    xt, _ = dataset[1].tensors()
     hs, ht = model.gen(xs), model.gen(xt, src=False)
-    return hs, ht
+    return hs.cpu().numpy(), ht.cpu().numpy()
 
 
 class WDLoader:

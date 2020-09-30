@@ -3,6 +3,7 @@ import torch
 from torch import nn, optim
 from torch.autograd import grad
 
+from dnadapt.data.dataset import CustomDataset
 from dnadapt.data.wdgrlLoader import make_wdgrl_loader, get_gen_data
 from dnadapt.models.discriminator import Discriminator
 from dnadapt.models.wdgrlModels import WDGRLNet
@@ -14,6 +15,12 @@ from dnadapt.globals import device
 from dnadapt.utils.progressBar import make_progressbar
 
 
+def data_to_custom_set(data):
+    src_set = CustomDataset(*(data[0]))
+    trg_set = CustomDataset(*(data[1]))
+    return src_set, trg_set
+
+
 def data_to_set(data):
     src_set = as_tensor_dataset(*(data[0]))
     trg_set = as_tensor_dataset(*(data[1]))
@@ -23,7 +30,7 @@ def data_to_set(data):
 def create_valid_fnc(model, lc_fnc, valid_data=None, bsize=32):
     valid_fnc, validset = None, None
     if valid_data is not None:
-        validset = data_to_set(valid_data)
+        validset = data_to_custom_set(valid_data)
         valid_loader = make_wdgrl_loader(validset, bsize=bsize)
         valid_fnc = make_validation(model, valid_loader, lc_fnc)
     return valid_fnc, validset
@@ -264,7 +271,7 @@ def train_model(model: WDGRLNet, train_data, valid_data=None, disc=None, epochs=
     lc_fnc = nn.CrossEntropyLoss()  # classification loss function
 
     # Prepare training
-    trainset = data_to_set(train_data)
+    trainset = data_to_custom_set(train_data)
     train_loader = make_wdgrl_loader(trainset, bsize=bsize)
     training_fnc = make_training(model, train_loader, lc_fnc, g_opt, c_opt, w_opt)
 

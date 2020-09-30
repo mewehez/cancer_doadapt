@@ -3,6 +3,7 @@ import torch
 from torch import optim
 from torch.utils.data import TensorDataset, DataLoader
 
+from dnadapt.data.dataset import CustomDataset
 from dnadapt.globals import device
 from dnadapt.utils.progressBar import make_progressbar
 from dnadapt.summary.watcher import StatsData
@@ -10,11 +11,11 @@ from dnadapt.utils.functions import accuracy, init_weights
 
 
 def _make_loader(data, bsize=32):
-    src_size, trg_size = data[0].size(0), data[1].size(0)
+    src_size, trg_size = data[0].shape[0], data[1].shape[0]
     y = np.concatenate([np.zeros(src_size), np.ones(trg_size)])
     y = torch.as_tensor(y, dtype=torch.long, device=device)
-    x = torch.cat(data, dim=0)
-    dataset = TensorDataset(x, y)
+    x = np.concatenate(data)
+    dataset = CustomDataset(x, y)
     dataloader = DataLoader(dataset, batch_size=bsize, shuffle=True)  # NOTE: Always shuffle
     return dataloader
 
