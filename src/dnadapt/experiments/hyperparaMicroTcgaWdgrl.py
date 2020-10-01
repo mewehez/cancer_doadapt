@@ -15,7 +15,7 @@ def main():
     src_path = os.path.join(datadir, 'microarray/train.npz')
     trg_path = os.path.join(datadir, 'tcga/train_eq.npz')
 
-    src_train, src_valid = load_data(src_path, valid_size=12000)
+    src_train, src_valid = load_data(src_path, valid_size=15000)
     src_train, src_valid = random_split_data(src_valid, ratio=0.2)
     trg_train, trg_valid = load_data(trg_path, valid_size=0.2)
 
@@ -67,8 +67,9 @@ def run_hyper_param(config, src_size, trg_size, train_data, params, param_name, 
         # train model
         watcher = train_model(model, train_data, valid_data=valid_data, disc=disc, **config)
 
+        watcher.name = watcher_name
         writer.write_watcher(watcher)
-        del watcher
+        del [watcher, model, disc]
     df = pd.DataFrame(meta_data)
     df.to_csv(os.path.join(writer.dir, 'meta'))
 

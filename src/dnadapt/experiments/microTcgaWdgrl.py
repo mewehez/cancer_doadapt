@@ -12,8 +12,8 @@ def main():
     src_path = os.path.join(datadir, 'microarray/train.npz')
     trg_path = os.path.join(datadir, 'tcga/train_eq.npz')
 
-    src_train, src_valid = load_data(src_path, valid_size=12000)
-    src_train, src_valid = random_split_data(src_valid, ratio=0.2)
+    src_train, src_valid = load_data(src_path, valid_size=0.2)
+    # src_train, src_valid = random_split_data(src_valid, ratio=0.2)
     trg_train, trg_valid = load_data(trg_path, valid_size=0.2)
 
     # config values
@@ -25,10 +25,10 @@ def main():
         'alpha2': 1e-3,
         'epochs': 40,
         'bsize': 32,
-        'patience': 7,
-        'min_epoch': 10
+        'patience': 3,
+        'min_epoch': 5
     }
-
+    
     src_size = 54675
     trg_size = 56602
     # create model

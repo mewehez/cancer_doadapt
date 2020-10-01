@@ -77,10 +77,7 @@ def opt_wd_dist(model, data, optimizer, gamma=10, steps=10):
         lwd = torch.mean(fw_hs) - torch.mean(fw_ht)
 
         lwd_ = -lwd + gamma * lgrad  # compute loss
-        # optimization step
-        optimizer.zero_grad()
-        lwd_.backward()
-        optimizer.step()
+        optimize_fnc(lwd_, optimizer)  # optimization step
 
         # add values to compute mean
         sum_lwd_ += lwd_.item()

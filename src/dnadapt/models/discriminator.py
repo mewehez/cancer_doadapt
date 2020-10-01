@@ -101,6 +101,7 @@ class Discriminator:
             training_fn(watcher=train_stats)
             if validation_fn is not None:
                 validation_fn(watcher=valid_stats)
+        print('')
 
         # get optimal values
         idx = np.argmin(train_stats.data['loss'])

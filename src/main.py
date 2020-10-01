@@ -1,6 +1,6 @@
 import os
 from dnadapt.experiments import toyWdgrl, toyFewShotWdgrl, \
-    microTcgaWdgrl, microTcgaFewShotWdgrl
+    microTcgaWdgrl, microTcgaFewShotWdgrl, hyperparaMicroTcgaWdgrl
 from dnadapt.data.toy import create_data_file
 from dnadapt.globals import datadir
 
