@@ -59,4 +59,4 @@ class DataWatcher(object):
         fold_path = folder_if_not_exist(os.path.join(path, self.name))
 
         for name, stats_data in self.data.items():
-            np.savez_compressed(os.path.join(fold_path, name), stats_data.data)
+            np.savez_compressed(os.path.join(fold_path, name), **stats_data.data)  # scatter the dict
