@@ -1,10 +1,10 @@
 import os
+import time
 
 from dnadapt.data.wdgrlLoader import load_data, create_test_data_loader
 from dnadapt.globals import datadir
 from dnadapt.models.microTcgaModels import create_wdgrl_model, create_disc
 from dnadapt.training.wdgrl import train_model, make_model_tester
-from dnadapt.utils.data import random_split_data
 
 
 def main():
@@ -54,4 +54,7 @@ def main():
 
 
 if __name__ == '__main__':
+    start_time = time.time()
     main()
+    end_time = time.time()
+    print(f'Elapsed time: {end_time - start_time} (s)')

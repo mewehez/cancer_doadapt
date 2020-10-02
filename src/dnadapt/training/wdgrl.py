@@ -83,7 +83,7 @@ def opt_wd_dist(model, data, optimizer, gamma=10, steps=10):
         sum_lwd_ += lwd_.item()
         sum_lgrad += lgrad.item()
 
-    return {'ewd_loss': sum_lwd_ / steps, 'wd_grad': sum_lgrad / steps}
+    return {'lwd_': sum_lwd_ / steps, 'lgrad': sum_lgrad / steps}
 
 
 def _run_train_epoch(model, loader, lc_fnc, g_opt, c_opt, w_opt, steps=10, lambd=1, gamma=10, watcher=None, **kwargs):

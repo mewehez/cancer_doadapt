@@ -8,4 +8,4 @@ _filepath = os.path.dirname(os.path.abspath(__file__))
 
 logdir = os.path.join(_filepath, '../../log/')
 modeldir = os.path.join(_filepath, '../../models/')
-datadir = os.path.join(_filepath, '../../data/')
+datadir = os.path.join(_filepath, '../../../data/')
