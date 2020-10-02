@@ -1,17 +1,18 @@
 import numpy as np
 from torch import nn, optim
 
+from dnadapt.data.dataset import CustomDataset
 from dnadapt.data.fewShotWgrlLoader import make_fs_wdgrl_loader
 from dnadapt.models.wdgrlModels import WDGRLNet
 from dnadapt.training.wdgrl import opt_wd_dist, target_loss_acc, data_to_set, optimize_fnc, \
-    create_valid_fnc, train_wdgrl
+    create_valid_fnc, train_wdgrl, data_to_custom_set
 from dnadapt.utils.data import as_tensor_dataset
 from dnadapt.utils.progressBar import make_progressbar
 from dnadapt.summary.watcher import StatsData
 from dnadapt.utils.functions import accuracy
 
 
-def _run_train_epoch(model, loader, lc_fnc, opt, wd_opt, steps=10, lambd=1, gamma=10, watcher=None, **kwargs):
+def _run_train_epoch(model, loader, lc_fnc, g_opt, c_opt, wd_opt, steps=10, lambd=1, gamma=10, watcher=None, **kwargs):
     model.train()
     # create data stats
     if watcher is None: watcher = StatsData()
@@ -30,15 +31,25 @@ def _run_train_epoch(model, loader, lc_fnc, opt, wd_opt, steps=10, lambd=1, gamm
         wd_stats = opt_wd_dist(model.w, [hs.detach(), ht.detach()], wd_opt, gamma=gamma, steps=steps)
         watcher.update(wd_stats)
 
+        # train classifier
+        sum_lc_s1, sum_lc_f1 = 0.0, 0.0
+        for j in range(steps):
+            zs, zf = model.c(hs.detach()), model.c(hf.detach())
+            lc_s1, lc_f1 = lc_fnc(zs, ys), lc_fnc(zf, yf)
+            optimize_fnc(lc_s1+lc_f1, c_opt)
+            sum_lc_s1 += lc_s1.item()
+            sum_lc_f1 += lc_f1.item()
+        lc_s1, lc_f1 = sum_lc_s1/steps, sum_lc_f1/steps
+
         # train classifier and domain critic
         zs, zf = model.c(hs), model.c(hf)
         # compute loss
-        lc_s, lc_f = lc_fnc(zs, ys), lc_fnc(zf, yf)
+        lc_s2, lc_f2 = lc_fnc(zs, ys), lc_fnc(zf, yf)
         lwd = model.w(hs).mean() - model.w(ht).mean()  # wasserstein loss
         # params = [param for name, param in model.named_parameters() if 'weight' not in name]
         # l2loss = sum([l2_loss(v) for v in params])
-        loss = lc_s + lc_f + lambd * lwd
-        optimize_fnc(loss, opt)  # optimization step
+        loss = lc_s2 + lc_f2 + lambd * lwd
+        optimize_fnc(loss, g_opt)  # optimization step
 
         # compute accuracies
         lc_t, ac_t = target_loss_acc(model.c, lc_fnc, ht, yt)
@@ -46,7 +57,7 @@ def _run_train_epoch(model, loader, lc_fnc, opt, wd_opt, steps=10, lambd=1, gamm
 
         # update stats
         watcher.update({
-            'lwd': lwd.item(), 'lc_s': lc_s.item(), 'lc_f': lc_f.item(),
+            'lwd': lwd.item(), 'lc_s1': lc_s1, 'lc_f1': lc_f1, 'lc_s2': lc_s2.item(), 'lc_f2': lc_f2.item(),
             'loss': loss.item(), 'lc_t': lc_t, 'ac_s': ac_s, 'ac_t': ac_t, 'ac_f': ac_f
         })
 
@@ -61,25 +72,26 @@ def _run_train_epoch(model, loader, lc_fnc, opt, wd_opt, steps=10, lambd=1, gamm
     return watcher
 
 
-def make_training(model, loader, clf_loss_fn, opt, wd_opt):
+def make_training(model, loader, lc_fnc, g_opt, c_opt, w_opt):
     def train(watcher=None, **kwargs):
-        return _run_train_epoch(model, loader, clf_loss_fn, opt, wd_opt, watcher=watcher, **kwargs)
+        return _run_train_epoch(model, loader, lc_fnc, g_opt, c_opt, w_opt, watcher=watcher, **kwargs)
 
     return train
 
 
-def train_model(model: WDGRLNet, train_data, valid_data=None, disc=None, epochs=30, lr=1e-3, lr_wd=1e-3, bsize=32,
+def train_model(model: WDGRLNet, train_data, valid_data=None, disc=None, epochs=30, alpha1=1e-3, alpha2=1e-3, bsize=32,
                 patience=3, min_epoch=10, **kwargs):
     # define optimizers and loss function
-    wd_opt = optim.Adam(model.w_params(), lr=lr_wd)  # wd loss optimizer
-    opt = optim.Adam(model.c_params() + model.g_params(), lr=lr)  # total loss optimizer
+    w_opt = optim.Adam(model.w_params(), lr=alpha1)
+    g_opt = optim.Adam(model.g_params(), lr=alpha2)
+    c_opt = optim.Adam(model.c_params(), lr=alpha2)
     lc_fnc = nn.CrossEntropyLoss()  # classifier loss function
 
     # Prepare training
-    trainset = data_to_set(train_data[:-1])  # train data 0, 1
-    trg_fs_set = as_tensor_dataset(*train_data[-1])
+    trainset = data_to_custom_set(train_data[:-1])  # train data 0, 1
+    trg_fs_set = CustomDataset(*train_data[-1])
     train_loader = make_fs_wdgrl_loader(trainset, trg_fs_set, bsize=bsize)
-    training_fnc = make_training(model, train_loader, lc_fnc, opt, wd_opt)
+    training_fnc = make_training(model, train_loader, lc_fnc, g_opt, c_opt, w_opt)
 
     # Prepare validation
     validation_fnc, validset = create_valid_fnc(model, lc_fnc, valid_data=valid_data, bsize=bsize)

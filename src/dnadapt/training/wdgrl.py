@@ -104,9 +104,13 @@ def _run_train_epoch(model, loader, lc_fnc, g_opt, c_opt, w_opt, steps=10, lambd
         watcher.update(wd_stats)
 
         # train classifier
-        zs = model.c(hs.detach())
-        lc_s1 = lc_fnc(zs, ys)
-        optimize_fnc(lc_s1, c_opt)
+        sum_lc_s1 = 0.0
+        for j in range(steps):
+            zs = model.c(hs.detach())
+            lc_s1 = lc_fnc(zs, ys)
+            optimize_fnc(lc_s1, c_opt)
+            sum_lc_s1 += lc_s1.item()
+        lc_s1 = sum_lc_s1/steps
 
         # train domain critic
         zs = model.c(hs)  # NOTE - If we don't recompute zs then <=>
@@ -123,7 +127,7 @@ def _run_train_epoch(model, loader, lc_fnc, g_opt, c_opt, w_opt, steps=10, lambd
 
         # update stats
         watcher.update({
-            'lwd': lwd.item(), 'lc_s1': lc_s1.item(), 'lc_s2': lc_s2.item(),
+            'lwd': lwd.item(), 'lc_s1': lc_s1, 'lc_s2': lc_s2.item(),
             'loss': loss.item(), 'lc_t': lc_t, 'ac_s': ac_s, 'ac_t': ac_t,
         })
 
@@ -262,9 +266,9 @@ def train_wdgrl(model: WDGRLNet, trainset, train_fnc, validset=None, valid_fnc=N
 def train_model(model: WDGRLNet, train_data, valid_data=None, disc=None, epochs=30, alpha1=1e-3, alpha2=1e-3, bsize=32,
                 patience=3, min_epoch=10, **kwargs):
     # define optimizers and loss function
-    w_opt = optim.Adam(model.w_params(), lr=alpha1)
-    g_opt = optim.Adam(model.g_params(), lr=alpha2)
-    c_opt = optim.Adam(model.c_params(), lr=alpha2)
+    w_opt = optim.SGD(model.w_params(), lr=alpha1, momentum=0.9)
+    g_opt = optim.SGD(model.g_params(), lr=alpha2, momentum=0.9)
+    c_opt = optim.SGD(model.c_params(), lr=alpha2, momentum=0.9)
     lc_fnc = nn.CrossEntropyLoss()  # classification loss function
 
     # Prepare training
