@@ -6,4 +6,6 @@ __pycache__/
 venv/
 /models/*
 /log/*
+*.pdf
+*.tex
 !.gitkeep
