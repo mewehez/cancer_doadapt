@@ -1,10 +1,11 @@
 import numpy as np
 from torch import nn, optim
 
+from dnadapt.data.dataset import CustomDataset
 from dnadapt.data.fewShotWgrlLoader import make_fs_wdgrl_loader
 from dnadapt.models.wdgrlModels import WDGRLNet
 from dnadapt.training.wdgrl import opt_wd_dist, target_loss_acc, data_to_set, optimize_fnc, \
-    create_valid_fnc, train_wdgrl
+    create_valid_fnc, train_wdgrl, data_to_custom_set
 from dnadapt.utils.data import as_tensor_dataset
 from dnadapt.utils.progressBar import make_progressbar
 from dnadapt.summary.watcher import StatsData
@@ -76,8 +77,8 @@ def train_model(model: WDGRLNet, train_data, valid_data=None, disc=None, epochs=
     lc_fnc = nn.CrossEntropyLoss()  # classifier loss function
 
     # Prepare training
-    trainset = data_to_set(train_data[:-1])  # train data 0, 1
-    trg_fs_set = as_tensor_dataset(*train_data[-1])
+    trainset = data_to_custom_set(train_data[:-1])  # train data 0, 1
+    trg_fs_set = CustomDataset(*train_data[-1])
     train_loader = make_fs_wdgrl_loader(trainset, trg_fs_set, bsize=bsize)
     training_fnc = make_training(model, train_loader, lc_fnc, opt, wd_opt)
 
