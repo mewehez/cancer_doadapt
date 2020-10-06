@@ -86,7 +86,7 @@ def opt_wd_dist(model, data, optimizer, gamma=10, steps=10):
     return {'lwd_': sum_lwd_ / steps, 'lgrad': sum_lgrad / steps}
 
 
-def _run_train_epoch(model, loader, lc_fnc, g_opt, c_opt, w_opt, steps=10, lambd=1, gamma=10, watcher=None, **kwargs):
+def _run_train_epoch(model, loader, lc_fnc, opt, w_opt, steps=10, lambd=1, gamma=10, watcher=None, **kwargs):
     model.train()
     # create watcher if none
     if watcher is None: watcher = StatsData()
@@ -103,19 +103,14 @@ def _run_train_epoch(model, loader, lc_fnc, g_opt, c_opt, w_opt, steps=10, lambd
         wd_stats = opt_wd_dist(model.w, [hs.detach(), ht.detach()], w_opt, gamma=gamma, steps=steps)
         watcher.update(wd_stats)
 
-        # train classifier
-        zs = model.c(hs.detach())
-        lc_s1 = lc_fnc(zs, ys)
-        optimize_fnc(lc_s1, c_opt)
-
         # train domain critic
         zs = model.c(hs)  # NOTE - If we don't recompute zs then <=>
-        lc_s2 = lc_fnc(zs, ys)  # compute lc_s again since weights have back propagated
+        lc_s = lc_fnc(zs, ys)  # compute lc_s again since weights have back propagated
         lwd = model.w(hs).mean() - model.w(ht).mean()  # wasserstein loss
         # params = [param for name, param in model.named_parameters() if 'weight' not in name]
         # l2loss = sum([l2_loss(v) for v in params])
-        loss = lc_s2 + lambd * lwd
-        optimize_fnc(loss, g_opt)  # optimization step
+        loss = lc_s + lambd * lwd
+        optimize_fnc(loss, opt)  # optimization step
 
         # target classification loss and accuracy
         lc_t, ac_t = target_loss_acc(model.c, lc_fnc, ht, yt)
@@ -123,7 +118,7 @@ def _run_train_epoch(model, loader, lc_fnc, g_opt, c_opt, w_opt, steps=10, lambd
 
         # update stats
         watcher.update({
-            'lwd': lwd.item(), 'lc_s1': lc_s1.item(), 'lc_s2': lc_s2.item(),
+            'lwd': lwd.item(), 'lc_s': lc_s.item(),
             'loss': loss.item(), 'lc_t': lc_t, 'ac_s': ac_s, 'ac_t': ac_t,
         })
 
@@ -179,9 +174,9 @@ def _run_valid_epoch(model, loader, lc_fnc, lambd=1, watcher=None, **kwargs):
     return watcher
 
 
-def make_training(model, loader, lc, g_opt, c_opt, w_opt):
+def make_training(model, loader, lc, opt, w_opt):
     def train(watcher=None, **kwargs):
-        return _run_train_epoch(model, loader, lc, g_opt, c_opt, w_opt, watcher=watcher, **kwargs)
+        return _run_train_epoch(model, loader, lc, opt, w_opt, watcher=watcher, **kwargs)
 
     return train
 
@@ -263,14 +258,14 @@ def train_model(model: WDGRLNet, train_data, valid_data=None, disc=None, epochs=
                 patience=3, min_epoch=10, **kwargs):
     # define optimizers and loss function
     w_opt = optim.Adam(model.w_params(), lr=alpha1)
-    g_opt = optim.Adam(model.g_params(), lr=alpha2)
-    c_opt = optim.Adam(model.c_params(), lr=alpha2)
+    # g_opt = optim.Adam(model.g_params(), lr=alpha2)
+    opt = optim.Adam(model.c_params() + model.g_params(), lr=alpha2)
     lc_fnc = nn.CrossEntropyLoss()  # classification loss function
 
     # Prepare training
     trainset = data_to_custom_set(train_data)
     train_loader = make_wdgrl_loader(trainset, bsize=bsize)
-    training_fnc = make_training(model, train_loader, lc_fnc, g_opt, c_opt, w_opt)
+    training_fnc = make_training(model, train_loader, lc_fnc, opt, w_opt)
 
     # Prepare validation
     validation_fnc, validset = create_valid_fnc(model, lc_fnc, valid_data=valid_data, bsize=bsize)

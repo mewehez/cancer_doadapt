@@ -28,8 +28,8 @@ def main():
         'alpha2': 1e-3,
         'epochs': 40,
         'bsize': 32,
-        'patience': 7,
-        'min_epoch': 10
+        'patience': 3,
+        'min_epoch': 7
     }
 
     src_size = 54675

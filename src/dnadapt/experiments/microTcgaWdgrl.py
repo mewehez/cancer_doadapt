@@ -26,7 +26,7 @@ def main():
         'epochs': 40,
         'bsize': 32,
         'patience': 3,
-        'min_epoch': 5
+        'min_epoch': 7
     }
     
     src_size = 54675
