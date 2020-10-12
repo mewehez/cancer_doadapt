@@ -19,10 +19,10 @@ def main():
     # config values
     config = {
         'lambd': 1,
-        'gamma': 10,
-        'alpha1': 1e-3,
+        'gamma': 1e-3,
+        'alpha1': 1e-4,
         'steps': 10,
-        'alpha2': 1e-3,
+        'alpha2': 1e-4,
         'epochs': 40,
         'bsize': 32,
         'patience': 3,

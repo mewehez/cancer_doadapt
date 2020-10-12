@@ -54,8 +54,8 @@ def gradient_penalty(model, data):
     hs, ht = data
     alpha = torch.rand(hs.size(0), 1, device=device)
     h = alpha * hs + (1.0 - alpha) * ht  # random point on the segment [hs, ht]
-    # h_hat = h.requires_grad_()
-    h_hat = torch.cat([h, hs, ht], dim=0).requires_grad_()  # stack variables
+    h_hat = h.requires_grad_()
+    # h_hat = torch.cat([h, hs, ht], dim=1).requires_grad_()  # stack variables
 
     fw_h_hat = model(h_hat)
     dfw_h_hat = grad(fw_h_hat, h_hat,
@@ -86,7 +86,7 @@ def opt_wd_dist(model, data, optimizer, gamma=10, steps=10):
     return {'lwd_': sum_lwd_ / steps, 'lgrad': sum_lgrad / steps}
 
 
-def _run_train_epoch(model, loader, lc_fnc, g_opt, c_opt, w_opt, steps=10, lambd=1, gamma=10, watcher=None, **kwargs):
+def _run_train_epoch(model, loader, lc_fnc, opts, steps=10, lambd=1, gamma=10, watcher=None, **kwargs):
     model.train()
     # create watcher if none
     if watcher is None: watcher = StatsData()
@@ -100,31 +100,32 @@ def _run_train_epoch(model, loader, lc_fnc, g_opt, c_opt, w_opt, steps=10, lambd
 
         # compute max[lwd - gama * lgrad]
         # ATTENTION - detach tensor from computational graph
-        wd_stats = opt_wd_dist(model.w, [hs.detach(), ht.detach()], w_opt, gamma=gamma, steps=steps)
+        wd_stats = opt_wd_dist(model.w, [hs.detach(), ht.detach()], opts['w_opt'], gamma=gamma, steps=steps)
         watcher.update(wd_stats)
 
         # train classifier
-        zs = model.c(hs.detach())
-        lc_s1 = lc_fnc(zs, ys)
-        optimize_fnc(lc_s1, c_opt)
+        zs = model.c(hs)
+        lc_s = lc_fnc(zs, ys)
+        optimize_fnc(lc_s, opts['sc_opt'])
+        ac_s = accuracy(zs, ys)  # source classification accuracy
 
         # train domain critic
-        zs = model.c(hs)  # NOTE - If we don't recompute zs then <=>
-        lc_s2 = lc_fnc(zs, ys)  # compute lc_s again since weights have back propagated
+        hs, ht = model.gen(xs), model.gen(xt, src=False)  # feature extraction
+        # zs = model.c(hs)
+        # lc_s2 = lc_fnc(zs, ys)  # compute lc_s again since weights have back propagated
         lwd = model.w(hs).mean() - model.w(ht).mean()  # wasserstein loss
         # params = [param for name, param in model.named_parameters() if 'weight' not in name]
         # l2loss = sum([l2_loss(v) for v in params])
-        loss = lc_s2 + lambd * lwd
-        optimize_fnc(loss, g_opt)  # optimization step
+        # loss = lwd
+        optimize_fnc(lwd, opts['t_opt'])  # optimization step
 
         # target classification loss and accuracy
         lc_t, ac_t = target_loss_acc(model.c, lc_fnc, ht, yt)
-        ac_s = accuracy(zs, ys)  # source classification accuracy
 
         # update stats
         watcher.update({
-            'lwd': lwd.item(), 'lc_s1': lc_s1.item(), 'lc_s2': lc_s2.item(),
-            'loss': loss.item(), 'lc_t': lc_t, 'ac_s': ac_s, 'ac_t': ac_t,
+            'lwd': lwd.item(), 'lc_s1': lc_s.item(), 'loss': lwd.item(),
+            'lc_t': lc_t, 'ac_s': ac_s, 'ac_t': ac_t,
         })
 
         # update progressbar
@@ -179,9 +180,9 @@ def _run_valid_epoch(model, loader, lc_fnc, lambd=1, watcher=None, **kwargs):
     return watcher
 
 
-def make_training(model, loader, lc, g_opt, c_opt, w_opt):
+def make_training(model, loader, lc, opts):
     def train(watcher=None, **kwargs):
-        return _run_train_epoch(model, loader, lc, g_opt, c_opt, w_opt, watcher=watcher, **kwargs)
+        return _run_train_epoch(model, loader, lc, opts, watcher=watcher, **kwargs)
 
     return train
 
@@ -263,14 +264,16 @@ def train_model(model: WDGRLNet, train_data, valid_data=None, disc=None, epochs=
                 patience=3, min_epoch=10, **kwargs):
     # define optimizers and loss function
     w_opt = optim.Adam(model.w_params(), lr=alpha1)
-    g_opt = optim.Adam(model.g_params(), lr=alpha2)
-    c_opt = optim.Adam(model.c_params(), lr=alpha2)
+    sc_opt = optim.Adam(model.gs_params() + model.c_params(), lr=alpha2)
+    gt_opt = optim.Adam(model.gt_params(), lr=alpha2)
+    # c_opt = optim.Adam(model.c_params(), lr=alpha2)
     lc_fnc = nn.CrossEntropyLoss()  # classification loss function
 
     # Prepare training
     trainset = data_to_custom_set(train_data)
     train_loader = make_wdgrl_loader(trainset, bsize=bsize)
-    training_fnc = make_training(model, train_loader, lc_fnc, g_opt, c_opt, w_opt)
+    opts = {'sc_opt': sc_opt, 't_opt': gt_opt, 'w_opt': w_opt}
+    training_fnc = make_training(model, train_loader, lc_fnc, opts)
 
     # Prepare validation
     validation_fnc, validset = create_valid_fnc(model, lc_fnc, valid_data=valid_data, bsize=bsize)

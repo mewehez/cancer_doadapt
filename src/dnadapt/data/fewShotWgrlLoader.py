@@ -12,8 +12,8 @@ def make_fs_wdgrl_loader(dataset, fs_dataset, bsize=32):
     fs_gen = batch_generator(DataLoader(fs_dataset, batch_size=bsize))
 
     # epoch size
-    src_epoch_size = int(len(dataset[0].tensors[1]) / bsize)
-    trg_epoch_size = int(len(dataset[1].tensors[1]) / bsize)
+    src_epoch_size = int(len(dataset[0]) / bsize)
+    trg_epoch_size = int(len(dataset[1]) / bsize)
     epoch_size = max(src_epoch_size, trg_epoch_size)
     dataloader = FSLoader(src_gen, trg_gen, fs_gen, size=epoch_size)
     return dataloader

@@ -4,5 +4,5 @@ from dnadapt.experiments import toyWdgrl, toyFewShotWdgrl, \
 
 
 if __name__ == '__main__':
-    microTcgaWdgrl.main()
+    hyperparaMicroTcgaWdgrl.main()
 

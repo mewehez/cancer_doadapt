@@ -20,7 +20,7 @@ def main():
 
     # config values
     config = {
-        'lambd': 1,
+        'lambd': 0.5,
         'gamma': 10,
         'alpha1': 1e-3,
         'steps': 10,
