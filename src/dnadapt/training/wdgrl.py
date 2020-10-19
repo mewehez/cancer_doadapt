@@ -87,7 +87,7 @@ def opt_wd_dist(model, data, optimizer, gamma=10, steps=10):
     return {'lwd_': sum_lwd, 'lgrad': sum_lgrad}
 
 
-def _run_train_epoch(model, loader, lc_fnc, opts, steps=10, gamma=10, eps=1e-3, watcher=None, **kwargs):
+def _run_train_epoch(model, loader, lc_fnc, opts, steps=10, lambd=1, gamma=10, eps=1e-3, watcher=None, **kwargs):
     model.train()
     # create watcher if none
     if watcher is None: watcher = StatsData()
@@ -106,22 +106,18 @@ def _run_train_epoch(model, loader, lc_fnc, opts, steps=10, gamma=10, eps=1e-3, 
         wd_stats = opt_wd_dist(model.w, [hs.detach(), ht.detach()], opts['w_opt'], gamma=gamma, steps=steps)
         watcher.update(wd_stats)
 
-        # train classifier
+        # train domain critic
         zs = model.c(hs)
         lc_s = lc_fnc(zs, ys)
-        optimize_fnc(lc_s, opts['sc_opt'])
-        ac_s = accuracy(zs, ys)  # source classification accuracy
-
-        # train domain critic
-        hs = model.gen(xs)
         lwd = model.w(hs).mean() - model.w(ht).mean()  # wasserstein loss
         params = [param for name, param in model.named_parameters() if 'weight' not in name]
         l2loss = sum([l2_loss(v) for v in params])
-        loss = lwd + eps * l2loss
-        optimize_fnc(loss, opts['t_opt'])  # optimization step
+        loss = lc_s + lambd * lwd + eps * l2loss
+        optimize_fnc(loss, opts['gc_opt'])  # optimization step
 
         # target classification loss and accuracy
         lc_t, ac_t = target_loss_acc(model.c, lc_fnc, ht, yt)
+        ac_s = accuracy(zs, ys)  # source classification accuracy
 
         # sinkhorn dist
         with torch.no_grad():
@@ -129,8 +125,8 @@ def _run_train_epoch(model, loader, lc_fnc, opts, steps=10, gamma=10, eps=1e-3, 
 
         # update stats
         watcher.update({
-            'lwd': lwd.item(), 'lc_s': lc_s.item(), 'loss': loss.item(),
-            'lc_t': lc_t, 'ac_s': ac_s, 'ac_t': ac_t, 'skh_loss': skh_loss.item()
+            'lwd': lwd.item(), 'lc_s': lc_s.item(), 'skh_loss': skh_loss.item(),
+            'loss': loss.item(), 'lc_t': lc_t, 'ac_s': ac_s, 'ac_t': ac_t,
         })
 
         # update progressbar
@@ -153,6 +149,8 @@ def _run_valid_epoch(model, loader, lc_fnc, eps=1e-3, watcher=None, **kwargs):
     # create progress bar
     pbar = make_progressbar(len(loader), name='Valid')
 
+    sinkhorn = SamplesLoss("sinkhorn", p=1, blur=.01)
+
     # loop over data
     for i, data in enumerate(loader, 1):
         [xs, ys], [xt, yt] = data  # get src and trg data
@@ -169,10 +167,15 @@ def _run_valid_epoch(model, loader, lc_fnc, eps=1e-3, watcher=None, **kwargs):
 
         # compute accuracies
         ac_s, ac_t = accuracy(zs, ys), accuracy(zt, yt)
+
+        # sinkhorn dist
+        with torch.no_grad():
+            skh_loss = sinkhorn(hs, ht)
+
         # update stats
         watcher.update({
             'lwd': lwd.item(), 'lc_s': lc_s.item(), 'loss': loss.item(),
-            'lc_t': lc_t.item(), 'ac_s': ac_s, 'ac_t': ac_t,
+            'lc_t': lc_t.item(), 'ac_s': ac_s, 'ac_t': ac_t, 'skh_loss': skh_loss.item()
         })
 
         # update progressbar
@@ -267,12 +270,11 @@ def train_model(model: WDGRLNet, train_data, valid_data=None, disc: Discriminato
                 alpha2=1e-3, bsize=32, patience=5, min_epoch=10, **kwargs):
     # define optimizers and loss function
     w_opt = optim.Adam(model.w_params(), lr=alpha1)
-    sc_opt = optim.Adam(model.gs_params() + model.c_params(), lr=alpha2)
-    t_opt = optim.Adam(model.gt_params(), lr=alpha2)
+    gc_opt = optim.Adam(model.gs_params() + model.c_params() + model.gt_params(), lr=alpha2)
     lc_fnc = nn.CrossEntropyLoss()  # classification loss function
 
     # Prepare training
-    opts = {'w_opt': w_opt, 'sc_opt': sc_opt, 't_opt': t_opt}
+    opts = {'w_opt': w_opt, 'gc_opt': gc_opt}
     trainset = data_to_custom_set(train_data)
     train_loader = make_wdgrl_loader(trainset, bsize=bsize)
     training_fnc = make_training(model, train_loader, lc_fnc, opts)

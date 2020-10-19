@@ -37,26 +37,19 @@ def _run_train_epoch(model, loader, lc_fnc, opts, steps=10, lambd=1, gamma=10, e
         watcher.update(wd_stats)
 
         # train classifier
-        zs = model.c(hs)
-        lc_s = lc_fnc(zs, ys)
-        optimize_fnc(lc_s, opts['sc_opt'])
-        ac_s = accuracy(zs, ys)  # source classification accuracy
-
-        # train classifier and domain critic
-        zf = model.c(hf)
-        lc_f = lc_fnc(zf, yf)
+        zs, zf = model.c(hs), model.c(hf)
+        lc_s, lc_f = lc_fnc(zs, ys), lc_fnc(zf, yf)
 
         # compute loss
-        hs = model.gen(xs)
         lwd = model.w(hs).mean() - model.w(ht).mean()  # wasserstein loss
         params = [param for name, param in model.named_parameters() if 'weight' not in name]
         l2loss = sum([l2_loss(v) for v in params])
-        loss = lc_f + lambd * lwd + eps * l2loss
-        optimize_fnc(loss, opts['t_opt'])  # optimization step
+        loss = lc_s + lc_f + lambd * lwd + eps * l2loss
+        optimize_fnc(loss, opts['gc_opt'])  # optimization step
 
         # compute accuracies
         lc_t, ac_t = target_loss_acc(model.c, lc_fnc, ht, yt)
-        ac_f = accuracy(zf, yf)
+        ac_s, ac_f = accuracy(zs, ys), accuracy(zf, yf)
 
         # sinkhorn dist
         with torch.no_grad():
@@ -90,12 +83,11 @@ def train_model(model: WDGRLNet, train_data, valid_data=None, disc: Discriminato
                 alpha2=1e-3, bsize=32, patience=5, min_epoch=10, **kwargs):
     # define optimizers and loss function
     w_opt = optim.Adam(model.w_params(), lr=alpha1)  # wd loss optimizer
-    sc_opt = optim.Adam(model.gs_params() + model.c_params(), lr=alpha2)  # total loss optimizer
-    t_opt = optim.Adam(model.gt_params(), lr=alpha2)
+    gc_opt = optim.Adam(model.gs_params() + model.c_params() + model.gt_params(), lr=alpha2)  # total loss optimizer
     lc_fnc = nn.CrossEntropyLoss()  # classifier loss function
 
     # Prepare training
-    opts = {'w_opt': w_opt, 'sc_opt': sc_opt, 't_opt': t_opt}
+    opts = {'w_opt': w_opt, 'gc_opt': gc_opt}
     trainset = data_to_custom_set(train_data[:-1])  # train data 0, 1
     trg_fs_set = CustomDataset(*train_data[-1])
     train_loader = make_fs_wdgrl_loader(trainset, trg_fs_set, bsize=bsize)
