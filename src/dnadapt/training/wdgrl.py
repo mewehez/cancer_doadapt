@@ -235,13 +235,13 @@ def train_wdgrl(model: WDGRLNet, trainset, train_fnc, validset=None, valid_fnc=N
         stats = train_fnc(watcher=watcher.data['train'], **kwargs)
 
         stop_loss = stats.data['loss'][-1]
-        stop_stats = {'train': stats}
+        stop_stats = {'train': {key: val[-1] for key, val in stats.data.items()}}
 
         # epoch validation
         if valid_fnc is not None:
             stats = valid_fnc(watcher=watcher.data['valid'], **kwargs)
             stop_loss = stats.data['loss'][-1]
-            stop_stats['valid'] = stats
+            stop_stats['valid'] = {key: val[-1] for key, val in stats.data.items()}
 
         # discriminator training
         if disc is not None:
