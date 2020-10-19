@@ -20,33 +20,36 @@ def create_disc(n_input):
 
 
 def create_wdgrl_model(src_size, trg_size):
-    nb_hid1, nb_hid2 = 2000, 500
     gen_s = nn.Sequential(
-        nn.Linear(src_size, nb_hid1),
-        nn.BatchNorm1d(nb_hid1, momentum=0.3),
+        nn.Linear(src_size, 2000),
+        nn.BatchNorm1d(2000, momentum=0.3),
         nn.ReLU(),
-        nn.Dropout(0.3)
-    )
-    gen_t = nn.Sequential(
-        nn.Linear(trg_size, nb_hid1),
-        nn.BatchNorm1d(nb_hid1),
-        nn.ReLU(),
-        nn.Dropout(0.3)
-    )
-    gen = nn.Sequential(
-        nn.Linear(nb_hid1, nb_hid2),
+        nn.Dropout(0.3),
+        nn.Linear(2000, 500),
         nn.ReLU()
     )
-    crit = nn.Sequential(
-        nn.Linear(nb_hid2, 10),
+    gen_t = nn.Sequential(
+        nn.Linear(trg_size, 2000),
+        nn.BatchNorm1d(2000),
+        nn.ReLU(),
+        nn.Dropout(0.3),
+        nn.Linear(2000, 500),
+        nn.ReLU()
+    )
+    # gen = nn.Sequential(
+    #     nn.Linear(2000, 500),
+    #     nn.ReLU()
+    # )
+    critic = nn.Sequential(
+        nn.Linear(500, 10),
         nn.ReLU(),
         nn.Linear(10, 1)
     )
     disc = nn.Sequential(
-        nn.Linear(nb_hid2, 10),
+        nn.Linear(500, 10),
         nn.ReLU(),
         nn.Linear(10, 2)
     )
-    model = MTWdgrlNet(gen_s, gen_t, gen, disc, crit)
+    model = MTWdgrlNet(gen_s, gen_t, disc, critic)
     init_weights(model)
     return model.to(device)

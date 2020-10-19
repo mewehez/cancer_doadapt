@@ -1,7 +1,8 @@
 import os
+import time
 
 from dnadapt.data.wdgrlLoader import load_data, create_test_data_loader
-from dnadapt.globals import datadir
+from dnadapt.globals import datadir, logdir
 from dnadapt.models.microTcgaModels import create_wdgrl_model, create_disc
 from dnadapt.training.fewShotWdgrl import train_model
 from dnadapt.training.wdgrl import make_model_tester
@@ -39,7 +40,12 @@ def main():
     disc = create_disc(500)
 
     # train model
-    train_model(model, [src_train, trg_train, trg_fs], valid_data=[src_valid, trg_valid], disc=disc, **config)
+    watcher, _ = train_model(model, [src_train, trg_train, trg_fs], valid_data=[src_valid, trg_valid], disc=disc, **config)
+
+    # save stats
+    date_time = time.strftime("%Y-%m-%d_%H-%M-%S")
+    watcher.name = f'mt_fs_wdgrl_{date_time}'
+    watcher.save(logdir)
 
     """Test model"""
     src_test_path = os.path.join(datadir, 'microarray/test.npz')

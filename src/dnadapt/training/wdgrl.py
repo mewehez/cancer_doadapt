@@ -1,5 +1,6 @@
 import numpy as np
 import torch
+from geomloss import SamplesLoss
 from torch import nn, optim
 from torch.autograd import grad
 
@@ -10,7 +11,7 @@ from dnadapt.models.wdgrlModels import WDGRLNet
 from dnadapt.summary.watcher import StatsData, DataWatcher
 from dnadapt.utils.data import as_tensor_dataset
 from dnadapt.utils.earlyStoping import EarlyStopping
-from dnadapt.utils.functions import accuracy, correct_pred
+from dnadapt.utils.functions import accuracy, correct_pred, l2_loss
 from dnadapt.globals import device
 from dnadapt.utils.progressBar import make_progressbar
 
@@ -68,30 +69,32 @@ def gradient_penalty(model, data):
 
 def opt_wd_dist(model, data, optimizer, gamma=10, steps=10):
     hs, ht = data
-    sum_lwd_, sum_lgrad = 0.0, 0.0
+
+    sum_lwd, sum_lgrad = 0.0, 0.0
     # wasserstein distance estimation
     for _ in range(steps):
         lgrad = gradient_penalty(model, [hs, ht])
         # wasserstein loss
-        fw_hs, fw_ht = model(hs), model(ht)
-        lwd = torch.mean(fw_hs) - torch.mean(fw_ht)
+        lwd = model(hs).mean() - model(ht).mean()
 
         lwd_ = -lwd + gamma * lgrad  # compute loss
         optimize_fnc(lwd_, optimizer)  # optimization step
 
-        # add values to compute mean
-        sum_lwd_ += lwd_.item()
-        sum_lgrad += lgrad.item()
+        # NOTE: We no longer add but take the last value
+        sum_lwd = lwd.item()
+        sum_lgrad = lgrad.item()
 
-    return {'lwd_': sum_lwd_ / steps, 'lgrad': sum_lgrad / steps}
+    return {'lwd_': sum_lwd, 'lgrad': sum_lgrad}
 
 
-def _run_train_epoch(model, loader, lc_fnc, g_opt, c_opt, w_opt, steps=10, lambd=1, gamma=10, watcher=None, **kwargs):
+def _run_train_epoch(model, loader, lc_fnc, opts, steps=10, gamma=10, eps=1e-3, watcher=None, **kwargs):
     model.train()
     # create watcher if none
     if watcher is None: watcher = StatsData()
     # create progress bar
     pbar = make_progressbar(len(loader), name='Train')
+
+    sinkhorn = SamplesLoss("sinkhorn", p=1, blur=.01)
 
     # loop over data
     for i, data in enumerate(loader, 1):
@@ -100,31 +103,33 @@ def _run_train_epoch(model, loader, lc_fnc, g_opt, c_opt, w_opt, steps=10, lambd
 
         # compute max[lwd - gama * lgrad]
         # ATTENTION - detach tensor from computational graph
-        wd_stats = opt_wd_dist(model.w, [hs.detach(), ht.detach()], w_opt, gamma=gamma, steps=steps)
+        wd_stats = opt_wd_dist(model.w, [hs.detach(), ht.detach()], opts['w_opt'], gamma=gamma, steps=steps)
         watcher.update(wd_stats)
 
         # train classifier
         zs = model.c(hs.detach())
-        lc_s1 = lc_fnc(zs, ys)
-        optimize_fnc(lc_s1, c_opt)
+        lc_s = lc_fnc(zs, ys)
+        optimize_fnc(lc_s, opts['sc_opt'])
+        ac_s = accuracy(zs, ys)  # source classification accuracy
 
         # train domain critic
-        zs = model.c(hs)  # NOTE - If we don't recompute zs then <=>
-        lc_s2 = lc_fnc(zs, ys)  # compute lc_s again since weights have back propagated
         lwd = model.w(hs).mean() - model.w(ht).mean()  # wasserstein loss
-        # params = [param for name, param in model.named_parameters() if 'weight' not in name]
-        # l2loss = sum([l2_loss(v) for v in params])
-        loss = lc_s2 + lambd * lwd
-        optimize_fnc(loss, g_opt)  # optimization step
+        params = [param for name, param in model.named_parameters() if 'weight' not in name]
+        l2loss = sum([l2_loss(v) for v in params])
+        loss = lwd + eps*l2loss
+        optimize_fnc(loss, opts['t_opt'])  # optimization step
 
         # target classification loss and accuracy
         lc_t, ac_t = target_loss_acc(model.c, lc_fnc, ht, yt)
-        ac_s = accuracy(zs, ys)  # source classification accuracy
+
+        # sinkhorn dist
+        with torch.no_grad():
+            skh_loss = sinkhorn(hs, ht)
 
         # update stats
         watcher.update({
-            'lwd': lwd.item(), 'lc_s1': lc_s1.item(), 'lc_s2': lc_s2.item(),
-            'loss': loss.item(), 'lc_t': lc_t, 'ac_s': ac_s, 'ac_t': ac_t,
+            'lwd': lwd.item(), 'lc_s': lc_s.item(), 'loss': loss.item(),
+            'lc_t': lc_t, 'ac_s': ac_s, 'ac_t': ac_t, 'skh_loss': skh_loss.item()
         })
 
         # update progressbar
@@ -139,7 +144,7 @@ def _run_train_epoch(model, loader, lc_fnc, g_opt, c_opt, w_opt, steps=10, lambd
 
 
 @torch.no_grad()
-def _run_valid_epoch(model, loader, lc_fnc, lambd=1, watcher=None, **kwargs):
+def _run_valid_epoch(model, loader, lc_fnc, eps=1e-3, watcher=None, **kwargs):
     model.eval()
     # create watcher if none
     if watcher is None: watcher = StatsData()
@@ -155,10 +160,11 @@ def _run_valid_epoch(model, loader, lc_fnc, lambd=1, watcher=None, **kwargs):
         # compute losses
         zs, zt = model.c(hs), model.c(ht)
         lc_s, lc_t = lc_fnc(zs, ys), lc_fnc(zt, yt)
+
         lwd = model.w(hs).mean() - model.w(ht).mean()  # wasserstein loss
-        # all_variables = [param for name, param in model.named_parameters() if 'weight' not in name]
-        # l2loss = sum([l2_loss(v) for v in all_variables])
-        loss = lc_s + lambd * lwd
+        all_variables = [param for name, param in model.named_parameters() if 'weight' not in name]
+        l2loss = sum([l2_loss(v) for v in all_variables])
+        loss = lwd + eps*l2loss
 
         # compute accuracies
         ac_s, ac_t = accuracy(zs, ys), accuracy(zt, yt)
@@ -179,17 +185,15 @@ def _run_valid_epoch(model, loader, lc_fnc, lambd=1, watcher=None, **kwargs):
     return watcher
 
 
-def make_training(model, loader, lc, g_opt, c_opt, w_opt):
+def make_training(model, loader, lc_fnc, opts):
     def train(watcher=None, **kwargs):
-        return _run_train_epoch(model, loader, lc, g_opt, c_opt, w_opt, watcher=watcher, **kwargs)
-
+        return _run_train_epoch(model, loader, lc_fnc, opts, watcher=watcher, **kwargs)
     return train
 
 
 def make_validation(model, loader, lc_fnc):
     def validate(watcher=None, **kwargs):
         return _run_valid_epoch(model, loader, lc_fnc, watcher=watcher, **kwargs)
-
     return validate
 
 
@@ -211,36 +215,32 @@ def make_model_tester(model):
             total += y.size(0)
             accs.append(correct / y.size(0))  # append batch accuracy
             pbar(vals={'acc': np.mean(accs)})  # step the progressbar
-
         return running_correct / total
-
     return test
 
 
 def train_wdgrl(model: WDGRLNet, trainset, train_fnc, validset=None, valid_fnc=None, disc: Discriminator = None,
-                epochs=30, patience=3, min_epoch=10, **kwargs):
+                epochs=30, patience=5, min_epoch=10, **kwargs):
     # create data watcher
     watcher = DataWatcher()
     watcher.add_data('train')
-    if valid_fnc is not None:
-        watcher.add_data('valid')
-    if disc is not None:
-        watcher.add_data('disc')
+    if valid_fnc is not None: watcher.add_data('valid')
+    if disc is not None: watcher.add_data('disc')
 
     stopper = EarlyStopping(patience=patience)  # prepare early stopping
     # training loop
     for i in range(epochs):
         print("[Epoch  {:2d}/{:2d}]".format(i + 1, epochs))
         stats = train_fnc(watcher=watcher.data['train'], **kwargs)
-        train_loss, train_acc = stats.data['loss'][-1], stats.data['ac_t'][-1]
+
+        stop_loss = stats.data['loss'][-1]
+        stop_stats = {'train': stats}
 
         # epoch validation
         if valid_fnc is not None:
             stats = valid_fnc(watcher=watcher.data['valid'], **kwargs)
-            valid_loss, valid_acc = stats.data['loss'][-1], stats.data['ac_t'][-1]
-            stopper(model, valid_loss, train_acc, valid_acc)
-        else:
-            stopper(model, train_loss, train_acc, None)
+            stop_loss = stats.data['loss'][-1]
+            stop_stats['valid'] = stats
 
         # discriminator training
         if disc is not None:
@@ -251,26 +251,30 @@ def train_wdgrl(model: WDGRLNet, trainset, train_fnc, validset=None, valid_fnc=N
                 valid_data_ = get_gen_data(model, validset)
             stats = disc(train_data_, valid_data=valid_data_)
             watcher.add_data(name='disc', data=stats)
+            stop_stats['disc'] = stats
             disc.reset()  # reset weights
             del [train_data_, valid_data_]
 
+        # early stopping
+        stopper(stop_loss, stop_stats)
         if stopper.stop() and i >= min_epoch:
             break
-    return watcher
+    return watcher, stopper.min_vals
 
 
-def train_model(model: WDGRLNet, train_data, valid_data=None, disc=None, epochs=30, alpha1=1e-3, alpha2=1e-3, bsize=32,
-                patience=3, min_epoch=10, **kwargs):
+def train_model(model: WDGRLNet, train_data, valid_data=None, disc: Discriminator = None, epochs=30, alpha1=1e-3,
+                alpha2=1e-3, bsize=32, patience=5, min_epoch=10, **kwargs):
     # define optimizers and loss function
     w_opt = optim.Adam(model.w_params(), lr=alpha1)
-    g_opt = optim.Adam(model.g_params(), lr=alpha2)
-    c_opt = optim.Adam(model.c_params(), lr=alpha2)
+    sc_opt = optim.Adam(model.gs_params() + model.c_params(), lr=alpha2)
+    t_opt = optim.Adam(model.gt_params(), lr=alpha2)
     lc_fnc = nn.CrossEntropyLoss()  # classification loss function
 
     # Prepare training
+    opts = {'w_opt': w_opt, 'sc_opt': sc_opt, 't_opt': t_opt}
     trainset = data_to_custom_set(train_data)
     train_loader = make_wdgrl_loader(trainset, bsize=bsize)
-    training_fnc = make_training(model, train_loader, lc_fnc, g_opt, c_opt, w_opt)
+    training_fnc = make_training(model, train_loader, lc_fnc, opts)
 
     # Prepare validation
     validation_fnc, validset = create_valid_fnc(model, lc_fnc, valid_data=valid_data, bsize=bsize)
