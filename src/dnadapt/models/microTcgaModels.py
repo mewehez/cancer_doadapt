@@ -30,7 +30,7 @@ def create_wdgrl_model(src_size, trg_size):
     )
     gen_t = nn.Sequential(
         nn.Linear(trg_size, 2000),
-        nn.BatchNorm1d(2000),
+        nn.BatchNorm1d(2000, momentum=0.3),
         nn.ReLU(),
         nn.Dropout(0.3),
         nn.Linear(2000, 500),

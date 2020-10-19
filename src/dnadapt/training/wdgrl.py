@@ -107,16 +107,17 @@ def _run_train_epoch(model, loader, lc_fnc, opts, steps=10, gamma=10, eps=1e-3, 
         watcher.update(wd_stats)
 
         # train classifier
-        zs = model.c(hs.detach())
+        zs = model.c(hs)
         lc_s = lc_fnc(zs, ys)
         optimize_fnc(lc_s, opts['sc_opt'])
         ac_s = accuracy(zs, ys)  # source classification accuracy
 
         # train domain critic
+        hs = model.gen(xs)
         lwd = model.w(hs).mean() - model.w(ht).mean()  # wasserstein loss
         params = [param for name, param in model.named_parameters() if 'weight' not in name]
         l2loss = sum([l2_loss(v) for v in params])
-        loss = lwd + eps*l2loss
+        loss = lwd + eps * l2loss
         optimize_fnc(loss, opts['t_opt'])  # optimization step
 
         # target classification loss and accuracy
